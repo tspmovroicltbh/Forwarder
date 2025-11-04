@@ -35,55 +35,24 @@ class SessionKeeper:
         self.consecutive_stable_checks = 0
 
 def create_robust_driver():
-    """Create a WebDriver with maximum stability options"""
+    from selenium import webdriver
+
     options = webdriver.ChromeOptions()
-    
-    # Core stability options
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_argument("--headless=new")  # important for Render
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    
-    # Memory and performance
     options.add_argument("--disable-extensions")
-    options.add_argument("--disable-plugins")
-    options.add_argument("--disable-images")  # Reduce memory usage
-    options.add_argument("--aggressive-cache-discard")
-    options.add_argument("--memory-pressure-off")
-    
-    # Network stability
-    options.add_argument("--disable-background-timer-throttling")
-    options.add_argument("--disable-renderer-backgrounding")
-    options.add_argument("--disable-backgrounding-occluded-windows")
-    
-    # Session persistence
-    options.add_argument("--disable-session-crashed-bubble")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_argument("--disable-software-rasterizer")
     options.add_argument("--disable-features=VizDisplayCompositor")
-    options.add_argument("--disable-component-extensions-with-background-pages")
-    
-    # User data persistence (critical for session maintenance)
-    options.add_argument("--user-data-dir=./discord_session")
-    options.add_argument("--profile-directory=Default")
-    
+    options.add_argument("--remote-debugging-port=9222")
     options.add_argument("--window-size=1200,800")
-    
+    options.add_argument("--user-data-dir=/tmp/discord_session")
+
     try:
         driver = webdriver.Chrome(options=options)
-        
-        # Stealth scripts
-        driver.execute_script("""
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            // Prevent session timeout by simulating real user
-            setInterval(() => {
-                const evt = new MouseEvent('mousemove', {
-                    clientX: Math.random() * window.innerWidth,
-                    clientY: Math.random() * window.innerHeight
-                });
-                document.dispatchEvent(evt);
-            }, 60000); // Move mouse every minute
-        """)
-        
         return driver
     except Exception as e:
         print(f"❌ Driver creation failed: {e}")

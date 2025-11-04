@@ -467,5 +467,21 @@ def main():
     finally:
         print(f"📅 Ended at: {datetime.datetime.now()}")
 
+# ========= KEEP-ALIVE WEB ENDPOINT =========
+from fastapi import FastAPI
+import threading, uvicorn
+
+app = FastAPI()
+
+@app.get("/")
+def home():
+    return {"status": "alive", "message": "Session management bot is running 🌀"}
+
+def run_web():
+    uvicorn.run(app, host="0.0.0.0", port=8080)
+
+# start the web server in a separate thread so it doesn’t block your bot
+threading.Thread(target=run_web, daemon=True).start()
+
 if __name__ == "__main__":
     main()

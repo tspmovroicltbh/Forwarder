@@ -7,6 +7,23 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import datetime
+from flask import Flask, jsonify
+import threading, os, time, random
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+
+# ====== WEB KEEP-ALIVE ======
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return jsonify({"status": "alive", "message": "Session manager running 😎"})
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+threading.Thread(target=run_web, daemon=True).start()
 
 # Configuration
 DISCORD_URL = "https://discord.com"
@@ -35,24 +52,19 @@ class SessionKeeper:
         self.consecutive_stable_checks = 0
 
 def create_robust_driver():
-    from selenium import webdriver
-
-    options = webdriver.ChromeOptions()
-    options.add_argument("--headless=new")  # important for Render
+    options = Options()
+    options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_argument("--disable-software-rasterizer")
-    options.add_argument("--disable-features=VizDisplayCompositor")
-    options.add_argument("--remote-debugging-port=9222")
-    options.add_argument("--window-size=1200,800")
-    options.add_argument("--user-data-dir=/tmp/discord_session")
-
+    options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36")
+    
     try:
         driver = webdriver.Chrome(options=options)
+        print("✅ Chrome driver started successfully")
         return driver
     except Exception as e:
         print(f"❌ Driver creation failed: {e}")
@@ -435,22 +447,6 @@ def main():
         print(f"💥 Fatal error: {e}")
     finally:
         print(f"📅 Ended at: {datetime.datetime.now()}")
-
-# ========= KEEP-ALIVE WEB ENDPOINT =========
-from fastapi import FastAPI
-import threading, uvicorn
-
-app = FastAPI()
-
-@app.get("/")
-def home():
-    return {"status": "alive", "message": "Session management bot is running 🌀"}
-
-def run_web():
-    uvicorn.run(app, host="0.0.0.0", port=10000)
-
-# start the web server in a separate thread so it doesn’t block your bot
-threading.Thread(target=run_web, daemon=True).start()
 
 if __name__ == "__main__":
     main()

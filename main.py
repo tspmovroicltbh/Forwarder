@@ -1,6 +1,3 @@
-
-MTQzNDk3MjEwNzAzMjM2NzMzNw.GZ_zGR.g2tvZ1zJ2htzNi-acnSHLuktWkeONvCuOV11j4 
-
 import discord
 from discord.ext import commands
 from flask import Flask, jsonify

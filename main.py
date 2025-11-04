@@ -4,7 +4,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import WebDriverException, TimeoutException, NoSuchElementException
 from flask import Flask, jsonify
 import threading
@@ -20,6 +20,10 @@ app = Flask(__name__)
 @app.route('/')
 def home():
     return jsonify({"status": "alive", "message": "Session manager running"})
+
+@app.route('/health')
+def health():
+    return jsonify({"status": "healthy", "timestamp": datetime.datetime.now().isoformat()})
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -37,16 +41,10 @@ DESTINATION_CHANNEL_ID = "1435185554730782750"
 class SessionKeeper:
     def __init__(self):
         self.last_activity = time.time()
-        self.last_maintenance = time.time()
         self.consecutive_failures = 0
-        self.message_count = 0
-        self.last_known_message_id = None
         
     def update_activity(self):
         self.last_activity = time.time()
-        
-    def should_perform_maintenance(self):
-        return time.time() - self.last_maintenance > 300  # 5 minutes
         
     def record_success(self):
         self.consecutive_failures = 0
@@ -57,410 +55,206 @@ class SessionKeeper:
     def needs_restart(self):
         return self.consecutive_failures >= 3
 
-def create_stealth_driver():
-    """Create a stealthy Chrome driver to avoid detection"""
+def create_render_driver():
+    """Create Chrome driver optimized for Render environment"""
     options = Options()
     
-    # Stealth options
+    # Render-specific configuration
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1920,1080")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
-    options.add_experimental_option('useAutomationExtension', False)
-    
-    # Realistic user agent and behavior
-    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    options.add_argument(f"--user-agent={user_agent}")
-    
-    # Additional stealth settings
     options.add_argument("--disable-extensions")
-    options.add_argument("--disable-plugins")
     options.add_argument("--disable-images")
     options.add_argument("--disable-javascript")
-    options.add_argument("--disable-popup-blocking")
     
-    # Comment out headless for debugging, uncomment for production
-    # options.add_argument("--headless=new")
+    # Headless mode for Render
+    options.add_argument("--headless=new")
+    
+    # Window size
+    options.add_argument("--window-size=1920,1080")
+    
+    # Anti-detection
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
+    
+    # User agent
+    user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    options.add_argument(f"--user-agent={user_agent}")
     
     try:
-        driver = webdriver.Chrome(options=options)
+        # For Render environment
+        service = Service()
+        driver = webdriver.Chrome(service=service, options=options)
         
-        # Execute CDP commands to hide automation
-        driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-            "userAgent": user_agent,
-            "platform": "Windows"
-        })
+        # Stealth modifications
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         
-        # Remove webdriver property
-        driver.execute_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-            
-            // Override permissions
-            const originalQuery = window.navigator.permissions.query;
-            window.navigator.permissions.query = (parameters) => (
-                parameters.name === 'notifications' ?
-                    Promise.resolve({ state: Notification.permission }) :
-                    originalQuery(parameters)
-            );
-        """)
-        
-        print("✅ Stealth Chrome driver created successfully")
+        print("✅ Chrome driver created successfully for Render")
         return driver
         
     except Exception as e:
-        print(f"❌ Failed to create driver: {e}")
+        print(f"❌ Failed to create Chrome driver: {e}")
         return None
 
 def human_like_delay(min_sec=0.1, max_sec=0.3):
     """Human-like random delay"""
     time.sleep(random.uniform(min_sec, max_sec))
 
-def human_like_typing(element, text):
-    """Type text with human-like randomness"""
-    element.click()
-    human_like_delay(0.2, 0.5)
-    
-    for char in text:
-        element.send_keys(char)
-        # Variable typing speed
-        if random.random() < 0.3:  # 30% chance of pause
-            human_like_delay(0.05, 0.15)
-        else:
-            human_like_delay(0.02, 0.08)
-    
-    human_like_delay(0.3, 0.7)
-
-def perform_random_activity(driver):
-    """Perform random human-like activities"""
-    try:
-        actions = [
-            lambda: driver.execute_script("window.scrollBy(0, 100);"),
-            lambda: driver.execute_script("window.scrollBy(0, -50);"),
-            lambda: ActionChains(driver).send_keys(Keys.PAGE_UP).perform(),
-            lambda: ActionChains(driver).send_keys(Keys.PAGE_DOWN).perform(),
-        ]
-        
-        random.choice(actions)()
-        human_like_delay(0.5, 1.5)
-        return True
-    except:
-        return False
-
 def robust_login(driver):
-    """Improved login with better error handling"""
+    """Login to Discord"""
     try:
         print("🔐 Starting login process...")
         driver.get(DISCORD_URL)
-        human_like_delay(3, 5)
+        time.sleep(5)
         
-        wait = WebDriverWait(driver, 25)
+        wait = WebDriverWait(driver, 30)
         
-        # Wait for email field with multiple selectors
-        email_selectors = [
-            "input[name='email']",
-            "input[type='email']",
-            "input[aria-label*='Email']",
-            "input[placeholder*='Email']"
-        ]
+        # Find email field
+        email_field = wait.until(EC.presence_of_element_located((By.NAME, "email")))
+        email_field.clear()
+        human_like_delay(0.5, 1)
         
-        email_field = None
-        for selector in email_selectors:
-            try:
-                email_field = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
-                break
-            except:
-                continue
+        # Type email
+        for char in LOGIN_EMAIL:
+            email_field.send_keys(char)
+            human_like_delay(0.05, 0.1)
         
-        if not email_field:
-            print("❌ Could not find email field")
-            return False
-        
-        # Human-like email entry
-        print("📧 Entering email...")
-        human_like_typing(email_field, LOGIN_EMAIL)
+        human_like_delay(1, 2)
         
         # Find password field
-        password_selectors = [
-            "input[name='password']",
-            "input[type='password']",
-            "input[aria-label*='Password']"
-        ]
+        password_field = driver.find_element(By.NAME, "password")
+        password_field.clear()
+        human_like_delay(0.5, 1)
         
-        password_field = None
-        for selector in password_selectors:
-            try:
-                password_field = driver.find_element(By.CSS_SELECTOR, selector)
-                break
-            except:
-                continue
+        # Type password
+        for char in LOGIN_PASSWORD:
+            password_field.send_keys(char)
+            human_like_delay(0.05, 0.1)
         
-        if not password_field:
-            print("❌ Could not find password field")
-            return False
+        human_like_delay(1, 2)
         
-        # Human-like password entry
-        print("🔒 Entering password...")
-        human_like_typing(password_field, LOGIN_PASSWORD)
-        
-        # Find and click login button
-        login_selectors = [
-            "button[type='submit']",
-            "button[class*='login']",
-            "div[class*='submit'] button"
-        ]
-        
-        login_button = None
-        for selector in login_selectors:
-            try:
-                login_button = driver.find_element(By.CSS_SELECTOR, selector)
-                break
-            except:
-                continue
-        
-        if login_button:
-            login_button.click()
-            print("📤 Login button clicked")
-        else:
-            # Fallback to Enter key
-            password_field.send_keys(Keys.RETURN)
-            print("📤 Login submitted with Enter key")
+        # Submit login
+        password_field.send_keys(Keys.RETURN)
+        print("📤 Login submitted...")
         
         # Wait for login to complete
-        print("⏳ Waiting for login to complete...")
-        human_like_delay(8, 12)
+        time.sleep(10)
         
-        # Verify login success with multiple checks
-        success_indicators = [
-            "[class*='channels']",
-            "[class*='guilds']",
-            "[class*='sidebar']",
-            "div[aria-label*='Server']"
-        ]
-        
-        for indicator in success_indicators:
-            try:
-                driver.find_element(By.CSS_SELECTOR, indicator)
-                print("✅ Login successful")
-                return True
-            except:
-                continue
-        
-        # Check if we're still on login page
-        if "login" in driver.current_url.lower():
-            print("❌ Still on login page - login may have failed")
+        # Check if login was successful
+        if "channels" in driver.current_url or "login" not in driver.current_url:
+            print("✅ Login successful")
+            return True
+        else:
+            print("❌ Login may have failed")
             return False
             
-        print("✅ Login likely successful (alternative indicators found)")
-        return True
-        
     except Exception as e:
         print(f"❌ Login failed: {e}")
         return False
 
 def join_channel_by_id(driver, channel_id):
-    """Navigate to specific channel with improved reliability"""
+    """Navigate to specific channel"""
     try:
         channel_url = f"https://discord.com/channels/@me/{channel_id}"
         
         if channel_id not in driver.current_url:
             print(f"📍 Navigating to channel: {channel_id}")
             driver.get(channel_url)
-            human_like_delay(4, 7)
+            time.sleep(5)
         
-        # Wait for channel to load with multiple indicators
+        # Wait for channel to load
         wait = WebDriverWait(driver, 20)
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "[role='textbox']")))
         
-        # Check for message input or chat area
-        channel_indicators = [
-            "[role='textbox'][aria-label*='Message']",
-            "div[contenteditable='true'][aria-label*='Message']",
-            "[class*='messageInput']",
-            "[class*='chatContent']"
-        ]
-        
-        for indicator in channel_indicators:
-            try:
-                wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, indicator)))
-                print(f"✅ Successfully joined channel: {channel_id}")
-                return True
-            except:
-                continue
-        
-        print(f"⚠️ Channel joined but couldn't verify loading: {channel_id}")
-        return True  # Still return True as navigation likely succeeded
+        print(f"✅ Successfully joined channel: {channel_id}")
+        return True
         
     except Exception as e:
         print(f"❌ Failed to join channel {channel_id}: {e}")
         return False
 
-def get_message_elements(driver):
-    """Get all message elements with updated selectors"""
+def get_latest_message_content(driver):
+    """Get the latest message content"""
     try:
+        # Try multiple message selectors
         message_selectors = [
-            "[data-list-id='chat-messages'] > li",
             "[class*='message_']",
-            "div[class*='message_']",
-            "article[class*='message_']",
-            "li[class*='message_']"
+            "li[class*='message_']",
+            "div[class*='message_']"
         ]
         
         for selector in message_selectors:
             try:
                 messages = driver.find_elements(By.CSS_SELECTOR, selector)
-                if messages and len(messages) > 0:
-                    return messages
+                if messages:
+                    latest_message = messages[-1]
+                    text = latest_message.text
+                    if text and len(text.strip()) > 0:
+                        return text.strip()
             except:
                 continue
-        
-        return []
-    except Exception as e:
-        print(f"⚠️ Error getting messages: {e}")
-        return []
-
-def extract_message_content(message_element):
-    """Extract text content from message element"""
-    try:
-        # Try multiple content selectors
-        content_selectors = [
-            "[class*='messageContent']",
-            "[class*='content_']",
-            "div[class*='markup_']",
-            "div[class*='content_']",
-            "span[class*='content_']"
-        ]
-        
-        for selector in content_selectors:
-            try:
-                content_elem = message_element.find_element(By.CSS_SELECTOR, selector)
-                text = content_elem.text.strip()
-                if text:
-                    return text
-            except:
-                continue
-        
-        # Fallback to entire element text
-        full_text = message_element.text.strip()
-        if full_text:
-            return full_text
-            
-        return ""
-    except Exception as e:
-        print(f"⚠️ Error extracting message content: {e}")
-        return ""
-
-def get_latest_message_content(driver):
-    """Get the content of the most recent message"""
-    try:
-        messages = get_message_elements(driver)
-        if not messages:
-            return None
-            
-        latest_message = messages[-1]
-        content = extract_message_content(latest_message)
-        
-        if content:
-            return content
-        else:
-            return None
-            
+                
+        return None
     except Exception as e:
         print(f"⚠️ Error getting latest message: {e}")
         return None
 
 def send_message_to_channel(driver, text):
-    """Send message to current channel with improved reliability"""
+    """Send message to current channel"""
     try:
-        if not text or len(text.strip()) == 0:
-            print("❌ Empty message, not sending")
+        if not text:
             return False
             
         wait = WebDriverWait(driver, 15)
         
-        # Find message input with multiple selectors
-        input_selectors = [
-            "[role='textbox'][aria-label*='Message']",
-            "div[contenteditable='true'][aria-label*='Message']",
-            "[class*='messageInput'] textarea",
-            "[class*='slateTextArea']"
-        ]
+        # Find message input
+        message_input = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "[role='textbox']")))
         
-        message_input = None
-        for selector in input_selectors:
-            try:
-                message_input = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
-                break
-            except:
-                continue
-        
-        if not message_input:
-            print("❌ Could not find message input")
-            return False
-        
-        # Clear input
+        # Clear and type message
         message_input.click()
-        human_like_delay(0.3, 0.7)
+        human_like_delay(0.5, 1)
+        message_input.send_keys(Keys.CONTROL + "a")
+        message_input.send_keys(Keys.BACKSPACE)
+        human_like_delay(0.5, 1)
         
-        # Select all and clear (multiple methods)
-        try:
-            message_input.send_keys(Keys.CONTROL + "a")
-        except:
-            try:
-                message_input.clear()
-            except:
-                pass
+        # Type message
+        for char in text:
+            message_input.send_keys(char)
+            if random.random() < 0.1:
+                human_like_delay(0.02, 0.05)
         
-        human_like_delay(0.2, 0.5)
+        human_like_delay(0.5, 1)
         
-        # Type message with human-like behavior
-        print(f"💬 Typing message: {text[:50]}{'...' if len(text) > 50 else ''}")
-        human_like_typing(message_input, text)
-        
-        # Send message
-        human_like_delay(0.5, 1.0)
+        # Send
         message_input.send_keys(Keys.RETURN)
         human_like_delay(1, 2)
         
-        print("✅ Message sent successfully")
+        print(f"✅ Message sent: {text[:50]}{'...' if len(text) > 50 else ''}")
         return True
         
     except Exception as e:
         print(f"❌ Failed to send message: {e}")
         return False
 
-def perform_maintenance(driver, session_keeper):
-    """Perform maintenance activities to keep session alive"""
+def keep_session_alive(driver, session_keeper):
+    """Keep the session active"""
     try:
-        print("🔧 Performing maintenance...")
-        session_keeper.last_maintenance = time.time()
-        
-        # Random activities
-        perform_random_activity(driver)
-        
-        # Ensure we're in source channel
-        if SOURCE_CHANNEL_ID not in driver.current_url:
-            print("🔄 Returning to source channel...")
-            join_channel_by_id(driver, SOURCE_CHANNEL_ID)
-            human_like_delay(2, 4)
-        
+        # Simple activity to keep session alive
+        driver.execute_script("window.scrollBy(0, 100);")
+        session_keeper.update_activity()
         session_keeper.record_success()
-        print("✅ Maintenance completed")
         return True
-        
-    except Exception as e:
-        print(f"⚠️ Maintenance failed: {e}")
+    except:
         session_keeper.record_failure()
         return False
 
-def monitor_and_forward_messages():
-    """Main monitoring loop with improved reliability"""
+def monitor_messages():
+    """Main monitoring function"""
     print("🚀 Starting Discord message monitor...")
     
     session_keeper = SessionKeeper()
-    driver = create_stealth_driver()
+    driver = create_render_driver()
     
     if not driver:
         print("❌ Failed to create browser driver")
@@ -479,57 +273,51 @@ def monitor_and_forward_messages():
         return False
     
     print("👀 Starting message monitoring...")
-    last_known_content = None
+    last_message = None
     check_count = 0
     
     try:
         while True:
             check_count += 1
             
-            # Perform maintenance if needed
-            if session_keeper.should_perform_maintenance():
-                if not perform_maintenance(driver, session_keeper):
-                    if session_keeper.needs_restart():
-                        print("🔄 Too many failures, restarting...")
-                        break
+            # Keep session alive
+            if not keep_session_alive(driver, session_keeper):
+                if session_keeper.needs_restart():
+                    print("🔄 Too many failures, restarting...")
+                    break
             
             # Check for new messages
-            current_content = get_latest_message_content(driver)
+            current_message = get_latest_message_content(driver)
             
-            if current_content and current_content != last_known_content:
-                print(f"📨 New message detected: {current_content[:100]}...")
+            if current_message and current_message != last_message:
+                print(f"📨 New message detected: {current_message[:100]}...")
                 
-                # Forward to destination channel
+                # Forward to destination
                 if join_channel_by_id(driver, DESTINATION_CHANNEL_ID):
-                    if send_message_to_channel(driver, current_content):
+                    if send_message_to_channel(driver, current_message):
                         print("✅ Message forwarded successfully!")
                     else:
                         print("❌ Failed to forward message")
                 
-                # Return to source channel
-                human_like_delay(1, 2)
+                # Return to source
+                time.sleep(2)
                 join_channel_by_id(driver, SOURCE_CHANNEL_ID)
-                human_like_delay(2, 3)
+                time.sleep(3)
                 
-                last_known_content = current_content
+                last_message = current_message
             
-            # Status updates
+            # Status update every 10 checks
             if check_count % 10 == 0:
                 status = "✅" if session_keeper.consecutive_failures == 0 else "⚠️"
-                print(f"{status} Monitor active - Check #{check_count} | Failures: {session_keeper.consecutive_failures}")
+                print(f"{status} Check #{check_count} | Failures: {session_keeper.consecutive_failures}")
             
-            # Adaptive delay based on stability
-            if session_keeper.consecutive_failures == 0:
-                delay = random.uniform(3, 6)  # Shorter delay when stable
-            else:
-                delay = random.uniform(6, 10)  # Longer delay when unstable
-            
-            time.sleep(delay)
+            # Wait before next check
+            time.sleep(random.uniform(5, 8))
             
     except KeyboardInterrupt:
         print("\n🛑 Stopped by user")
     except Exception as e:
-        print(f"💥 Fatal error in monitoring: {e}")
+        print(f"💥 Fatal error: {e}")
         import traceback
         traceback.print_exc()
     finally:
@@ -538,36 +326,47 @@ def monitor_and_forward_messages():
             print("🔚 Browser closed")
         except:
             pass
+    
+    return True
 
 def main():
-    """Main function with restart capability"""
+    """Main function with restart logic"""
     print("=" * 60)
-    print("🤖 Discord Message Forwarder Bot")
+    print("🤖 Discord Message Forwarder Bot - Render Optimized")
     print(f"📅 Started: {datetime.datetime.now()}")
     print(f"📤 Source: {SOURCE_CHANNEL_ID}")
     print(f"📥 Destination: {DESTINATION_CHANNEL_ID}")
     print("=" * 60)
     
-    restart_count = 0
-    max_restarts = 5
+    max_attempts = 3
+    attempt = 0
     
-    while restart_count < max_restarts:
+    while attempt < max_attempts:
+        attempt += 1
+        print(f"\n🔄 Attempt {attempt}/{max_attempts}")
+        
         try:
-            if monitor_and_forward_messages():
+            success = monitor_messages()
+            if success:
                 print("✅ Monitor completed successfully")
                 break
             else:
-                restart_count += 1
-                print(f"🔄 Restarting... ({restart_count}/{max_restarts})")
+                print("❌ Monitor failed, will retry...")
                 time.sleep(10)
         except Exception as e:
-            restart_count += 1
-            print(f"💥 Crash detected, restarting... ({restart_count}/{max_restarts})")
-            print(f"Error: {e}")
-            time.sleep(10)
+            print(f"💥 Crash detected: {e}")
+            if attempt < max_attempts:
+                print("🔄 Restarting...")
+                time.sleep(10)
     
-    if restart_count >= max_restarts:
-        print("❌ Maximum restarts reached, giving up")
+    if attempt >= max_attempts:
+        print("❌ Maximum attempts reached, service will remain alive for web requests")
+        print("💡 The web server is still running at https://forwarder-j50q.onrender.com")
+        
+        # Keep the web server running indefinitely
+        while True:
+            time.sleep(60)
+            print("🌐 Web server still running...")
     
     print(f"📅 Ended: {datetime.datetime.now()}")
     print("=" * 60)

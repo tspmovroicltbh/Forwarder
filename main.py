@@ -478,7 +478,7 @@ def home():
     return {"status": "alive", "message": "Session management bot is running 🌀"}
 
 def run_web():
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=10000)
 
 # start the web server in a separate thread so it doesn’t block your bot
 threading.Thread(target=run_web, daemon=True).start()

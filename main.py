@@ -66,7 +66,7 @@ USER_TOKEN = os.environ.get("DISCORD_USER_TOKEN", "").strip()
 # Fallback to hardcoded if env var not set (NOT RECOMMENDED for production)
 if not USER_TOKEN:
     logger.warning("⚠️ DISCORD_USER_TOKEN not found in environment, using fallback")
-    USER_TOKEN = "MTQzNDk3MjEwNzAzMjM2NzMzNw.GZ_zGR.g2tvZ1zJ2htzNi-acnSHLuktWkeONvCuOV11j4"
+    USER_TOKEN = "MTQzNDk3MjEwNzAzMjM2NzMzNw.G5_xrs.y5BkXtKacHhL0jI3Kn6dLgKcO2kyuVUzpwD4Nk"
 
 SOURCE_CHANNEL_ID = int(os.environ.get("SOURCE_CHANNEL_ID", "1376365659830616207"))
 DEST_CHANNEL_ID = int(os.environ.get("DEST_CHANNEL_ID", "1435185554730782750"))

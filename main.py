@@ -278,7 +278,8 @@ def main():
         logger.info("🔌 Connecting to Discord...")
         logger.info(f"Token starts with: {USER_TOKEN[:20]}...")
         
-        client.run(USER_TOKEN, bot=False, reconnect=True)  # Added reconnect=True
+        # For user accounts (self-bots), just pass the token directly
+        client.run(USER_TOKEN, reconnect=True)
         
     except discord.errors.LoginFailure as e:
         logger.error(f"❌ Invalid Discord token! Error: {e}")
